@@ -1,0 +1,20 @@
+[build]
+  command = "npm run build"
+  publish = "netlify/public"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["pdfkit"]
+  included_files = ["netlify/site/**", "app/static/brand/*.woff2"]
+
+# The publish directory contains no app content. Every page and file is served
+# through the authenticated function; secrets belong in Netlify's Functions scope.
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/billing/:splat"
+  status = 200
+  force = true

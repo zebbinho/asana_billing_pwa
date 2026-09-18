@@ -103,3 +103,7 @@ Tests: `python -m pytest -q` (zusätzlich `pytest` installieren).
 ## Geschützte Mitarbeitertests
 
 `render.yaml` und `TESTUMGEBUNG.md` bereiten einen passwortgeschützten Render-Testdienst vor. Im Hostingmodus schützen serverseitige Zugangsdaten sämtliche Inhalte. `DATA_DIR` legt den persistenten Speicherort fest. Jeder Reportlauf erhält einen eigenen Ablageordner; bestehende Dateien werden nicht überschrieben. Eine Reporthistorie in der Oberfläche ist noch nicht enthalten.
+
+## Netlify und lokaler Betrieb
+
+Alternativ zu Render ist eine Netlify-Variante enthalten. Einrichtung und gemeinsame Testanmeldung: siehe [NETLIFY.md](NETLIFY.md). `start.bat` und die lokale Python-Version bleiben verfügbar. Netlify verwendet eigene persistente Blobs-Daten; lokale SQLite-Daten werden nicht automatisch synchronisiert.

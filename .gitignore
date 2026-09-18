@@ -8,3 +8,8 @@ __pycache__/
 .billing.db*
 output/
 data/
+
+node_modules/
+netlify/site/
+netlify/public/
+.netlify/
