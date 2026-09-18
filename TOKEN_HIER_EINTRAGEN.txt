@@ -1,0 +1,16 @@
+Der Asana Personal Access Token wird NICHT in diese Datei eingetragen.
+
+1. Doppelklick auf start.bat.
+2. Beim ersten Start wird automatisch die Datei .env angelegt und in Notepad geoeffnet.
+3. Ersetze dort:
+
+ASANA_ACCESS_TOKEN=HIER_DEIN_ASANA_PAT_EINTRAGEN
+
+mit deinem echten PAT, z.B.:
+
+ASANA_ACCESS_TOKEN=DEIN_GEHEIMER_TOKEN
+
+4. Speichern, Notepad schliessen.
+5. start.bat erneut doppelklicken.
+
+Die .env ist in .gitignore und wird nicht in Reports oder Logs geschrieben.

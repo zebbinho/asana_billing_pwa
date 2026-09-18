@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: apenio-billing-test
+    runtime: python
+    region: frankfurt
+    plan: 0.5c-512mb
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /healthz
+    disk:
+      name: billing-test-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: APP_ENV
+        value: hosted
+      - key: DATA_DIR
+        value: /var/data
+      - key: TEST_USERNAME
+        value: apenio-test
+      - key: TEST_PASSWORD
+        generateValue: true
+      - key: ASANA_ACCESS_TOKEN
+        sync: false
+      - key: ASANA_WORKSPACE_GID
+        value: "1207205268697266"
