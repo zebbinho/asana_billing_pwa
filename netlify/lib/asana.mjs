@@ -1,4 +1,4 @@
-import {AppError,id,normalize,uniqueEntries,taskBudget} from './core.mjs';
+import {AppError,id,normalize,uniqueEntries,taskBudget,commissionedBudgets} from './core.mjs';
 const TIME_FIELDS = 'gid,duration_minutes,entered_on,description,billable_status,created_by.gid,created_by.name,attributable_to.gid,attributable_to.name,task.gid,task.name';
 const TASK_FIELDS = 'gid,name,custom_fields.gid,custom_fields.name,custom_fields.resource_subtype,custom_fields.display_value,custom_fields.enum_value.name,custom_fields.multi_enum_values.name,custom_fields.text_value,custom_fields.number_value';
 export function asanaClient(env = process.env, transport = fetch) {
@@ -28,7 +28,15 @@ export function asanaClient(env = process.env, transport = fetch) {
   async function projects(){return [...new Map((await paged(`/workspaces/${id(workspace)}/projects`,{opt_fields:'gid,name,archived'})).map(p=>[p.gid,p])).values()];}
   async function enrich(project,rows,progress=async()=>{}) {
     const fields=await paged(`/projects/${id(project)}/custom_field_settings`,{opt_fields:'custom_field.gid,custom_field.name,custom_field.resource_subtype'});
-    const field=fields.map(f=>f.custom_field).find(f=>f?.name?.trim().toLowerCase()==='apenio-budgets') || null;
+    const available=fields.map(f=>f.custom_field);
+    const field=['apenio-budgets','apenio-ai-budgets'].map(name=>available.find(f=>f?.name?.trim().toLowerCase()===name)).find(Boolean)||null;
+    const commissioned=available.find(f=>f?.name?.trim().toLowerCase()==='beauftragt (h)');
+    if(commissioned&&!field)throw new AppError(422,'Beauftragt (h) gefunden, aber kein apenio-Budgetfeld für die Zuordnung.');
+    if(field&&commissioned){
+      field.commissioned_field=commissioned;
+      await progress('Beauftragte Stunden aller Projektaufgaben werden geladen …');
+      field.commissioned_budgets=commissionedBudgets(await paged(`/projects/${id(project)}/tasks`,{opt_fields:TASK_FIELDS}),field);
+    }
     if(!field)return {rows:rows.map(r=>({...r,asana_budget:null})),field};
     const ids=[...new Set(rows.map(r=>r.task_gid).filter(Boolean))],values=new Map();
     for(let i=0;i<ids.length;i+=5){await Promise.all(ids.slice(i,i+5).map(async gid=>{const task=await get(`/tasks/${id(gid)}`,{opt_fields:TASK_FIELDS});values.set(gid,taskBudget(task.data||{},field));}));await progress(`Budgetzuordnungen: ${Math.min(i+5,ids.length)} von ${ids.length} Aufgaben geprüft`);}

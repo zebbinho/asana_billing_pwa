@@ -107,3 +107,9 @@ Tests: `python -m pytest -q` (zusätzlich `pytest` installieren).
 ## Netlify und lokaler Betrieb
 
 Alternativ zu Render ist eine Netlify-Variante enthalten. Einrichtung und gemeinsame Testanmeldung: siehe [NETLIFY.md](NETLIFY.md). `start.bat` und die lokale Python-Version bleiben verfügbar. Netlify verwendet eigene persistente Blobs-Daten; lokale SQLite-Daten werden nicht automatisch synchronisiert.
+
+### Beauftragte Stunden aus Asana
+
+Das Zahlenfeld `Beauftragt (h)` wird über alle direkt zum Projekt gehörenden Aufgaben geladen, auch ohne Zeitbuchungen. Je `apenio-Budgets` (alternativ `apenio-AI-Budgets`) werden die Stunden einmal pro Aufgabe summiert. Diese aktuellen Asana-Werte überschreiben lokale Budgetvorgaben; 0 ist ein gültiger Wert, leere Felder werden ignoriert. Aufgaben mit beauftragten Stunden ohne Budgetzuordnung sowie negative Werte blockieren die Auswertung mit einem Hinweis.
+
+Die Oberfläche zeigt die Quelle sowie kumuliert erbrachte und offene Stunden bis zum Berichtsende. Nicht abrechenbare Buchungen belasten das Budget wie bisher nicht. PDF und CSV verwenden dieselben beauftragten Stunden. Asana-Budgets werden nur in Asana geändert; die Anwendung schreibt keine Werte nach Asana zurück. Historische Budgetstände werden nicht rekonstruiert. Unteraufgaben müssen selbst zum Projekt gehören, um als Budgetdefinition berücksichtigt zu werden.

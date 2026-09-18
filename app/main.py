@@ -199,15 +199,44 @@ def get_project_custom_field_settings(project_gid: str) -> list[dict[str, Any]]:
 
 def find_budget_field(project_gid: str) -> dict[str, Any] | None:
     """Find apenio-Budgets on the project, but use its GID once discovered."""
-    for setting in get_project_custom_field_settings(project_gid):
-        cf = setting.get("custom_field") or {}
-        if (cf.get("name") or "").strip().casefold() == BUDGET_FIELD_NAME.casefold():
-            return {
-                "gid": cf.get("gid"),
-                "name": cf.get("name"),
-                "resource_subtype": cf.get("resource_subtype"),
-            }
+    fields = [x.get("custom_field") or {} for x in get_project_custom_field_settings(project_gid)]
+    commissioned = next((f for f in fields if f.get("name", "").strip().casefold() == "beauftragt (h)"), None)
+    for name in ["apenio-budgets", "apenio-ai-budgets"]:
+        field = next((f for f in fields if f.get("name", "").strip().casefold() == name), None)
+        if field:
+            return dict(field, commissioned_field=commissioned)
+    if commissioned:
+        raise HTTPException(422, 'Beauftragt (h) gefunden, aber kein apenio-Budgetfeld für die Zuordnung.')
     return None
+
+
+def commissioned_budgets(tasks, field):
+    """Sum each Asana task once, including tasks without time entries."""
+    target = (field.get("commissioned_field") or {}).get("gid")
+    totals = {}
+    seen = set()
+    for task in tasks:
+        if task["gid"] in seen:
+            continue
+        seen.add(task["gid"])
+        value = next((f.get("number_value") for f in task.get("custom_fields", []) if f.get("gid") == target), None)
+        if value is None:
+            continue
+        import math
+        if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
+            raise HTTPException(422, 'Ungültige Stunden in Beauftragt (h). Bitte in Asana korrigieren.')
+        name = extract_budget_from_task(task, field)
+        if not name:
+            raise HTTPException(422, 'Eine Aufgabe mit Beauftragt (h) hat keine Budgetzuordnung. Bitte in Asana ergänzen.')
+        totals[name] = totals.get(name, 0) + value
+    return [{"budget_name": name, "commissioned_hours": value, "source": "asana"} for name, value in totals.items()]
+
+
+def effective_budgets(budgets, field):
+    merged = {b["budget_name"]: b for b in budgets}
+    for b in (field or {}).get("commissioned_budgets", []):
+        merged[b["budget_name"]] = b
+    return list(merged.values())
 
 
 def get_task_details(task_gid: str) -> dict[str, Any]:
@@ -253,6 +282,9 @@ def enrich_task_budgets(project_gid: str, rows: list[dict[str, Any]]) -> tuple[l
     budget_field = find_budget_field(project_gid)
     if not budget_field:
         return [dict(r, asana_budget=None) for r in rows], None
+    if budget_field.get("commissioned_field"):
+        project_tasks = paged(f"/projects/{project_gid}/tasks", {"opt_fields": TASK_CUSTOM_FIELDS})
+        budget_field["commissioned_budgets"] = commissioned_budgets(project_tasks, budget_field)
     cache: dict[str, str | None] = {}
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -386,9 +418,11 @@ def preview(project_gid: str, month: str | None = None, start: str | None = None
         start, end = month_bounds(month)
     else:
         raise HTTPException(400, "Bitte Monat oder Von/Bis angeben")
-    rows = [normalize(x) for x in get_entries(start, end, project_gid)]
-    rows, budget_field = enrich_task_budgets(project_gid, rows)
+    cumulative = [normalize(x) for x in get_entries(None, end, project_gid)]
+    cumulative, budget_field = enrich_task_budgets(project_gid, cumulative)
+    rows = [r for r in cumulative if start <= r["date"] <= end]
     settings = get_settings(project_gid)
+    settings["budgets"] = effective_budgets(settings["budgets"], budget_field)
     mappings = settings["mappings"]
     tasks: dict[str, dict[str, Any]] = {}
     missing_task = missing_project = 0
@@ -421,6 +455,15 @@ def preview(project_gid: str, month: str | None = None, start: str | None = None
     for name in discovered:
         if name not in configured:
             budgets.append({"project_gid": project_gid, "budget_name": name, "commissioned_hours": 0.0, "auto_discovered": True})
+    delivered = {}
+    for r in cumulative:
+        if r["billable_status"] == "nonBillable":
+            continue
+        name = r.get("asana_budget") or (mappings.get(r["task_gid"]) or {}).get("budget_name") or "UNASSIGNED"
+        delivered[name] = delivered.get(name, 0) + r["hours"]
+    for b in budgets:
+        b["delivered_hours"] = delivered.get(b["budget_name"], 0)
+        b["remaining_hours"] = b["commissioned_hours"] - b["delivered_hours"]
     return {
         "project_name": project_name,
         "customer_name": (settings.get("project") or {}).get("customer_name") or "",
@@ -542,7 +585,7 @@ def generate(payload: GenerateIn):
     pset = settings.get("project") or {}
     customer = payload.customer_name or pset.get("customer_name") or (monthly[0]["project_name"] if monthly else payload.project_gid)
     mappings = settings["mappings"]
-    budget_defs = {b["budget_name"]: float(b["commissioned_hours"]) for b in settings["budgets"]}
+    budget_defs = {b["budget_name"]: float(b["commissioned_hours"]) for b in effective_budgets(settings["budgets"], budget_field)}
 
     def enrich(rows):
         out=[]

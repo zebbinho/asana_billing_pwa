@@ -12,11 +12,14 @@ export async function performJob(job,store,client=asanaClient()) {
   }
   const settings=job.settings || await store.json(`settings/${p.project_gid}`) || emptySettings();
   await progress(job.kind==='report'?'Kumulierte Leistungen bis zum Berichtsende werden geladen …':'Projektbuchungen werden geladen …');
-  const rows=await client.entries(job.kind==='report'?null:p.start,p.end,p.project_gid);
+  const rows=await client.entries(null,p.end,p.project_gid);
   const enriched=await client.enrich(p.project_gid,rows,progress);
   if(job.kind==='preview'){
     const name=rows[0]?.project_name || settings.project?.project_name || (await client.get(`/projects/${p.project_gid}`,{opt_fields:'name'})).data?.name || p.project_gid;
-    return preview(enriched.rows,settings,enriched.field,name);
+    const result=preview(enriched.rows.filter(r=>r.date>=p.start&&r.date<=p.end),settings,enriched.field,name);
+    const model=reportModel(enriched.rows,settings,p,enriched.field);
+    result.budgets=result.budgets.map(b=>({...b,...model.budgets.find(x=>x.budget_name===b.budget_name)}));
+    return result;
   }
   await progress('PDF und CSV-Nachweise werden erstellt …');
   const model=reportModel(enriched.rows,settings,p,enriched.field);

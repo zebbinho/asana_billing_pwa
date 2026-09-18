@@ -60,7 +60,7 @@ export function preview(rows, settings, field, projectName) {
     const t = tasks.get(r.task_gid) || {task_gid:r.task_gid, task_name:r.task_name, hours:0, mapping:settings.mappings[r.task_gid] || null, asana_budget:r.asana_budget};
     t.hours += r.hours; tasks.set(r.task_gid, t);
   }
-  const budgets = [...settings.budgets];
+  const budgets = effectiveBudgets(settings.budgets,field);
   for (const name of new Set(rows.map(r=>r.asana_budget).filter(Boolean))) if (!budgets.some(b=>b.budget_name===name)) budgets.push({budget_name:name, commissioned_hours:0, auto_discovered:true});
   const list = [...tasks.values()].sort((a,b)=>a.task_name.localeCompare(b.task_name,'de'));
   return {project_name:projectName, customer_name:settings.project?.customer_name || '', hours:rows.reduce((n,r)=>n+r.hours,0), entries:rows.length, missing_task:rows.filter(r=>!r.task_gid).length, missing_project:rows.filter(r=>!r.project_gid).length, tasks:list, budgets, budget_field:field, auto_budget_tasks:list.filter(t=>t.asana_budget).length, unmapped_budget_tasks:list.filter(t=>!t.asana_budget && (!t.mapping?.budget_name || t.mapping.budget_name==='UNASSIGNED')).length};
@@ -75,11 +75,30 @@ export function reportModel(rows, settings, payload, field) {
   };
   const cumulative = rows.map(enrich);
   const lines = cumulative.filter(r=>r.date>=start && r.date<=end);
-  const definitions = new Map(settings.budgets.map(b=>[b.budget_name,b.commissioned_hours]));
+  const definitions = new Map(effectiveBudgets(settings.budgets,field).map(b=>[b.budget_name,b.commissioned_hours]));
   const delivered = new Map();
   for (const r of cumulative) if (r.billable_status!=='nonBillable') delivered.set(r.budget_name,(delivered.get(r.budget_name)||0)+r.hours);
   const budgets = [...new Set([...definitions.keys(),...delivered.keys()])].sort().map(name=>({budget_name:name,commissioned_hours:definitions.get(name)||0,delivered_hours:delivered.get(name)||0,remaining_hours:(definitions.get(name)||0)-(delivered.get(name)||0)}));
   const customer = payload.customer_name || settings.project?.customer_name || rows[0]?.project_name || payload.project_gid;
   const summary = {customer,start,end,project_gid:payload.project_gid,entries:lines.length,monthly_hours:lines.reduce((n,r)=>n+r.hours,0),cumulative_hours:cumulative.reduce((n,r)=>n+r.hours,0),unassigned_monthly:lines.filter(r=>r.budget_name==='UNASSIGNED').length,unassigned_cumulative:cumulative.filter(r=>r.budget_name==='UNASSIGNED').length,missing_task:cumulative.filter(r=>!r.task_gid).length,missing_project:cumulative.filter(r=>!r.project_gid).length,budget_field:field,auto_budget_monthly:lines.filter(r=>r.budget_source==='asana').length};
   return {customer,start,end,lines,budgets,summary};
+}
+
+export function commissionedBudgets(tasks, field) {
+  const totals=new Map(),seen=new Set(),target=field.commissioned_field?.gid;
+  for(const task of tasks){
+    if(seen.has(task.gid))continue;seen.add(task.gid);
+    const value=task.custom_fields?.find(f=>f.gid===target)?.number_value;
+    if(value==null)continue;
+    if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw new AppError(422,'Ungültige Stunden in Beauftragt (h). Bitte in Asana korrigieren.');
+    const name=taskBudget(task,field);
+    if(!name)throw new AppError(422,'Eine Aufgabe mit Beauftragt (h) hat keine Budgetzuordnung. Bitte in Asana ergänzen.');
+    totals.set(name,(totals.get(name)||0)+value);
+  }
+  return [...totals].map(([budget_name,commissioned_hours])=>({budget_name,commissioned_hours,source:'asana'}));
+}
+export function effectiveBudgets(budgets,field){
+  const result=new Map(budgets.map(b=>[b.budget_name,b]));
+  for(const b of field?.commissioned_budgets||[])result.set(b.budget_name,b);
+  return [...result.values()];
 }

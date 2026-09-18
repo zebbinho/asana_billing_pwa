@@ -8,7 +8,7 @@ import {normalize} from '../netlify/lib/core.mjs';
 import {env,authorization,memoryStore,raw,settings} from '../tests/netlify/helpers.mjs';
 const store=memoryStore();await store.putJSON('settings/p1',settings);
 const delay=()=>new Promise(r=>setTimeout(r,600));
-const client={workspace:'test',get:async()=>({data:{name:'TESTDATEN – kein Asana-Zugriff'}}),projects:async()=>[{gid:'p1',name:'Testkunde'},{gid:'p2',name:'Kunde ohne Buchungen'}],entries:async(start)=>{await delay();return [...(!start?[normalize(raw('old','2026-08-01',60))]:[]),normalize(raw())]},enrich:async(p,rows,progress)=>{await progress('Testdaten: Budgetzuordnungen werden geprüft …');await delay();return {rows,field:null}}};
+const client={workspace:'test',get:async()=>({data:{name:'TESTDATEN – kein Asana-Zugriff'}}),projects:async()=>[{gid:'p1',name:'Testkunde'},{gid:'p2',name:'Kunde ohne Buchungen'}],entries:async(start)=>{await delay();return [...(!start?[normalize(raw('old','2026-08-01',60))]:[]),normalize(raw())]},enrich:async(p,rows,progress)=>{await progress('Testdaten: Budgetzuordnungen werden geprüft …');await delay();return {rows,field:{gid:'budget',name:'apenio-Budgets',commissioned_field:{gid:'hours',name:'Beauftragt (h)'},commissioned_budgets:[{budget_name:'Beratung',commissioned_hours:16,source:'asana'}]}}}};
 createServer(async(req,res)=>{
   try{
     const chunks=[];for await(const c of req)chunks.push(c);
